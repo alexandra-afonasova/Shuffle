@@ -26,6 +26,12 @@ import UIKit
 
 open class SwipeCardStack: UIView, SwipeCardDelegate, UIGestureRecognizerDelegate {
 
+    enum DelayedAction {
+        case appendCards([Int])
+        case deleteCardsAtIndices([Int])
+        case deleteCardsAtPositions([Int])
+    }
+
   /// A internal structure for a `SwipeCard` and it's corresponding index in the card stack's `dataSource`.
   struct Card {
     var index: Int
@@ -82,12 +88,16 @@ open class SwipeCardStack: UIView, SwipeCardDelegate, UIGestureRecognizerDelegat
     return !isAnimating && (topCard?.isUserInteractionEnabled ?? true)
   }
 
-  var isAnimating: Bool = false
+  var isAnimating: Bool = false {
+      didSet { animatingStateChanged(isAnimating) }
+  }
 
   let cardContainer = UIView()
 
   private var animator: CardStackAnimatable = CardStackAnimator.shared
   private var stateManager: CardStackStateManagable = CardStackStateManager()
+
+    private var delayedActions = [DelayedAction]()
 
   // MARK: - Initialization
 
@@ -380,6 +390,10 @@ open class SwipeCardStack: UIView, SwipeCardDelegate, UIGestureRecognizerDelegat
   /// - Parameter indices: The indices of the cards in the data source.
   public func appendCards(atIndices indices: [Int]) {
     guard let dataSource = dataSource else { return }
+      if isAnimating {
+          delayedActions.append(.appendCards(indices))
+          return
+      }
 
     let oldNumberOfCards = stateManager.totalIndexCount
     let newNumberOfCards = dataSource.numberOfCards(in: self)
@@ -405,6 +419,10 @@ open class SwipeCardStack: UIView, SwipeCardDelegate, UIGestureRecognizerDelegat
   /// - Parameter indices: The indices of the cards in the data source to delete.
   public func deleteCards(atIndices indices: [Int]) {
     guard let dataSource = dataSource else { return }
+      if isAnimating {
+          delayedActions.append(.deleteCardsAtIndices(indices))
+          return
+      }
 
     let oldNumberOfCards = stateManager.totalIndexCount
     let newNumberOfCards = dataSource.numberOfCards(in: self)
@@ -426,6 +444,10 @@ open class SwipeCardStack: UIView, SwipeCardDelegate, UIGestureRecognizerDelegat
   /// - Parameter positions: The positions of the cards to delete in the card stack.
   public func deleteCards(atPositions positions: [Int]) {
     guard let dataSource = dataSource else { return }
+      if isAnimating {
+          delayedActions.append(.deleteCardsAtPositions(positions))
+          return
+      }
 
     let oldNumberOfCards = stateManager.totalIndexCount
     let newNumberOfCards = dataSource.numberOfCards(in: self)
@@ -440,6 +462,23 @@ open class SwipeCardStack: UIView, SwipeCardDelegate, UIGestureRecognizerDelegat
     stateManager.delete(indicesAtPositions: positions)
     reloadVisibleCards()
   }
+
+    private func animatingStateChanged(_ isAnimating: Bool) {
+        if isAnimating { return }
+
+        delayedActions.forEach { action in
+            switch action {
+            case .appendCards(let indices):
+                appendCards(atIndices: indices)
+            case .deleteCardsAtIndices(let indices):
+                deleteCards(atIndices: indices)
+            case .deleteCardsAtPositions(let positions):
+                deleteCards(atPositions: positions)
+            }
+        }
+
+        delayedActions.removeAll()
+    }
 
   // MARK: - SwipeCardDelegate
 
